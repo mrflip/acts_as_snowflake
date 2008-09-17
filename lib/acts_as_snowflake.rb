@@ -1,6 +1,7 @@
 # ActsAsSnowflake
 require 'rubygems'
-require 'uuidtools'
+require 'imw/dataset/uuid'
+require 'imw/dataset/uri'
 
 #
 # This module will make your resources take their #id as a UUID
@@ -13,6 +14,7 @@ require 'uuidtools'
 # UUID_URL_NAMESPACE
 # UUID_OID_NAMESPACE
 # UUID_X500_NAMESPACE
+#
 
 module ActsAsSnowflake
 
@@ -37,7 +39,8 @@ module ActsAsSnowflake
 
   module ClassMethods
     #
-    # Give a UUID generation strategy and
+    # Give a UUID generation strategy and (unless :timestamp) a method to
+    # generate the UUID from:
     #
     #
     # [+:dns+]  generating_method should return a dns octet string unique to this resource.
@@ -64,29 +67,27 @@ module ActsAsSnowflake
     # generate from that string, but am guaranteed not to collide with a UUID
     # generated in your namespace.
     #
+    # ---
+    #
+    # And please: always remember that you are unique, just like everyone else.
+    #
     def acts_as_snowflake strategy, generating_method=nil
       # stuff in the class accessors we need
       cattr_accessor :uuid_namespace
       cattr_accessor :uuid_generating_method
       self.uuid_generating_method = generating_method
-
       self.class_eval do
         #
         # Set before_filter
         #
         case strategy
         when :timestamp
-          def before_create_with_uuid()  self.uuid, self.created_at = new_timestamp_and_uuid  end
+          def before_create_with_uuid() before_create_without_uuid; self.uuid, self.created_at = new_timestamp_and_uuid  end
         when :dns, :uri, :oid, :x500, UUID, String
-          def before_create_with_uuid() self.uuid = namespaced_uuid  end
+          def before_create_with_uuid() before_create_without_uuid; self.uuid = namespaced_uuid  end
         else raise BadStrategyError, strategy
         end
         alias_method_chain :before_create, :uuid
-
-        #
-        # Generate param from UUID
-        #
-        alias_method :to_param, :uuid
       end
 
       #
@@ -103,7 +104,8 @@ module ActsAsSnowflake
       when :oid         then self.uuid_namespace = UUID_OID_NAMESPACE
       when :x500        then self.uuid_namespace = UUID_X500_NAMESPACE
       when UUID         then self.uuid_namespace = UUID.sha1_create(UUID_URL_NAMESPACE, strategy)
-      when String && (strategy =~ %r{^http://})
+      when String
+        warn "This is supposed to be a URL namespace" unless (strategy =~ %r{^http://})
         # strategy is taken to be a URL, namespace generated from it.
         #
         # there are, of course, a lot of URLs that don't match the above
@@ -112,7 +114,6 @@ module ActsAsSnowflake
         # if http:// doesn't do it for you.
         #
         self.uuid_namespace = UUID.sha1_create(UUID_URL_NAMESPACE, strategy)
-        before_create :make_namespaced_uuid_before_create
       else
         raise BadStrategyError, strategy
       end
@@ -133,15 +134,3 @@ module ActsAsSnowflake
 end
 
 
-
-class UUID
-
-  def self.hex_to_str str
-    /([\da-f]{8})([\da-f]{4})([\da-f]{4})([\da-f]{4})([\da-f]{12})/.match(str).captures.join '-'
-  end
-
-
-  def self.parse_hex str
-    parse(UUID.hex_to_str(str))
-  end
-end
