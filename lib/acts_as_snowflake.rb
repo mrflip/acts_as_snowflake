@@ -1,7 +1,7 @@
 # ActsAsSnowflake
 require 'rubygems'
-require 'imw/dataset/uuid'
-require 'imw/dataset/uri'
+require 'uuid'
+require 'uri'
 
 #
 # This module will make your resources take their #id as a UUID
